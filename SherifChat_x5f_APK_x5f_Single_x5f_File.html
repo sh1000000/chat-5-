@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sherif Chat Pro - كل حاجة شغالة</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui;background:#0f172a;color:#e2e8f0;height:100vh;display:flex;flex-direction:column}
+header{background:#1e293b;padding:8px 10px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #0ea5e9}
+header h1{font-size:14px}
+#status{font-size:10px;padding:5px 10px;border-radius:20px;color:white;font-weight:bold}
+#modeBar{display:flex;gap:4px;padding:6px;background:#0f172a}
+.mode{flex:1;padding:6px;text-align:center;border-radius:8px;background:#1e293b;font-size:11px;cursor:pointer;border:1px solid transparent}
+.mode.active{background:#0ea5e9;border-color:#0ea5e9}
+#roomBar{display:flex;gap:4px;padding:6px;background:#1e293b}
+#roomBar input{flex:1;padding:9px;border-radius:20px;border:none;background:#334155;color:white;text-align:center;font-size:13px}
+#roomBar button{padding:9px 12px;border-radius:20px;border:none;color:white;font-weight:bold;cursor:pointer;font-size:12px}
+#peers{padding:5px 10px;font-size:11px;color:#94a3b8;background:#0f172a;display:flex;justify-content:space-between}
+#tabs{display:flex;gap:4px;padding:4px;background:#0f172a}
+.tab{flex:1;padding:8px;text-align:center;background:#1e293b;border-radius:8px;cursor:pointer;font-size:12px;border:1px solid #334155}
+.tab.active{background:#0ea5e9;color:white;border-color:#0ea5e9}
+#messages{flex:1;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:8px;background:#0b1220}
+.msg{padding:10px 12px;border-radius:14px;max-width:82%;font-size:13px;word-break:break-word;position:relative}
+.msg.me{background:linear-gradient(135deg,#0ea5e9,#6366f1);align-self:flex-end;color:white;border-bottom-right-radius:4px}
+.msg.other{background:#1e293b;align-self:flex-start;border-bottom-left-radius:4px}
+.msg img{max-width:200px;border-radius:10px;margin-top:6px;display:block;cursor:pointer;border:2px solid rgba(255,255,255,.1)}
+.msg small{display:block;font-size:9px;opacity:.7;margin-top:4px}
+#inputBar{display:flex;gap:4px;padding:7px;background:#1e293b;align-items:center}
+#inputBar input[type=text]{flex:1;padding:11px;border-radius:20px;border:none;background:#334155;color:white;outline:none;font-size:14px}
+.iconBtn{width:38px;height:38px;border-radius:50%;border:none;background:#334155;color:white;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.iconBtn.send{background:#0ea5e9}
+#emojiPanel{display:none;grid-template-columns:repeat(8,1fr);gap:2px;padding:6px;background:#1e293b;max-height:120px;overflow-y:auto}
+#emojiPanel.show{display:grid}
+#emojiPanel span{font-size:20px;padding:6px;text-align:center;cursor:pointer}
+#privateList{display:none;padding:6px;background:#1e293b;gap:4px;overflow-x:auto}
+#privateList.show{display:flex}
+.peerChip{padding:6px 10px;background:#334155;border-radius:20px;font-size:11px;cursor:pointer;white-space:nowrap;border:1px solid transparent}
+.peerChip.active{background:#0ea5e9;border-color:white}
+#callUI{display:none;position:fixed;inset:0;background:#000;z-index:9999;flex-direction:column}
+#callUI.show{display:flex}
+#callUI .videos{flex:1;position:relative;display:flex;flex-direction:column}
+#callUI video#remoteVideo{flex:1;background:#111;object-fit:cover}
+#callUI video#localVideo{position:absolute;bottom:90px;right:12px;width:100px;height:140px;background:#222;border-radius:10px;border:2px solid #0ea5e9;object-fit:cover;z-index:2}
+#callUI .ctrls{display:flex;gap:14px;justify-content:center;padding:18px;background:#1e293b}
+.ctrl{width:52px;height:52px;border-radius:50%;border:none;font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ctrl.end{background:#ef4444;color:white}
+.ctrl.mute{background:#334155;color:white}
+#incomingCall{display:none;position:fixed;top:10px;left:10px;right:10px;background:#1e293b;border:2px solid #0ea5e9;border-radius:14px;padding:12px;z-index:9998;box-shadow:0 10px 30px rgba(0,0,0,.6)}
+#incomingCall.show{display:block}
+#debug{padding:4px 10px;background:#1e293b;font-size:9px;color:#fbbf24;border-top:1px solid #334155;max-height:50px;overflow-y:auto}
+</style>
+</head>
+<body>
+
+<header>
+<div><h1>💬 Sherif Chat Pro</h1><div style="font-size:9px;color:#94a3b8" id="myIdShow">ID: ...</div></div>
+<div id="status" style="background:#6b7280">● بيتصل</div>
+</header>
+
+<div id="modeBar">
+<div class="mode active" data-mode="auto" onclick="setMode('auto')">🔄 أوتوماتيك</div>
+<div class="mode" data-mode="online" onclick="setMode('online')">🌐 بنت</div>
+<div class="mode" data-mode="offline" onclick="setMode('offline')">📶 بدون نت</div>
+</div>
+
+<div id="roomBar">
+<input id="roomInput" value="sherif-home" placeholder="اسم الغرفة">
+<button onclick="joinRoom()" style="background:#0ea5e9">دخول</button>
+<button onclick="startCall(false)" style="background:#16a34a">📞</button>
+<button onclick="startCall(true)" style="background:#8b5cf6">🎥</button>
+</div>
+
+<div id="peers"><span id="peersText">👥 1 (انت)</span><span id="netType">🌐 بنت</span></div>
+
+<div id="tabs">
+<div class="tab active" data-tab="group" onclick="switchTab('group')">👥 جماعي</div>
+<div class="tab" data-tab="private" onclick="switchTab('private')">🔒 فردي</div>
+</div>
+
+<div id="privateList"></div>
+
+<div id="messages"></div>
+
+<div id="incomingCall">
+<div style="display:flex;justify-content:space-between;align-items:center">
+<div><div id="callerName" style="font-weight:bold">📞 مكالمة...</div><div id="callerType" style="font-size:11px;color:#94a3b8">...</div></div>
+<div style="display:flex;gap:10px">
+<button onclick="acceptCall()" style="width:46px;height:46px;border-radius:50%;border:none;background:#16a34a;color:white;font-size:18px">📞</button>
+<button onclick="rejectCall()" style="width:46px;height:46px;border-radius:50%;border:none;background:#ef4444;color:white">✕</button>
+</div>
+</div>
+</div>
+
+<div id="emojiPanel">
+<span onclick="addEmoji('😂')">😂</span><span onclick="addEmoji('❤️')">❤️</span><span onclick="addEmoji('🔥')">🔥</span><span onclick="addEmoji('👍')">👍</span><span onclick="addEmoji('😍')">😍</span><span onclick="addEmoji('🥺')">🥺</span><span onclick="addEmoji('😭')">😭</span><span onclick="addEmoji('🙏')">🙏</span><span onclick="addEmoji('😅')">😅</span><span onclick="addEmoji('😎')">😎</span><span onclick="addEmoji('👏')">👏</span><span onclick="addEmoji('✨')">✨</span><span onclick="addEmoji('🎉')">🎉</span><span onclick="addEmoji('😳')">😳</span><span onclick="addEmoji('🤔')">🤔</span><span onclick="addEmoji('💀')">💀</span>
+</div>
+
+<div id="inputBar">
+<button class="iconBtn" onclick="toggleEmoji()">😊</button>
+<button class="iconBtn" onclick="document.getElementById('imgInput').click()">🖼️</button>
+<input type="file" id="imgInput" accept="image/*" style="display:none">
+<input type="text" id="txt" placeholder="اكتب رسالة...">
+<button class="iconBtn send" onclick="sendMsg()">➤</button>
+</div>
+
+<div id="debug">⏳ جاهز - دوس دخول - افتح نفس الغرفة على موبايل تاني</div>
+
+<div id="callUI">
+<div class="videos">
+<video id="remoteVideo" autoplay playsinline></video>
+<video id="localVideo" autoplay muted playsinline></video>
+<div style="position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;pointer-events:none">
+<div id="callWith" style="background:rgba(0,0,0,.6);padding:6px 10px;border-radius:20px;font-size:12px">مكالمة...</div>
+<div id="callTimer" style="background:rgba(0,0,0,.6);padding:6px 10px;border-radius:20px;font-size:12px">00:00</div>
+</div>
+</div>
+<div class="ctrls">
+<button class="ctrl mute" onclick="toggleMute()" id="muteBtn">🎤</button>
+<button class="ctrl end" onclick="endCall()">✕</button>
+<button class="ctrl mute" onclick="toggleVideo()" id="videoBtn">🎥</button>
+</div>
+</div>
+
+<script>
+let peer=null, roomHostPeer=null;
+let myId='', myName='شريف', currentRoom='sherif-home', currentMode='auto', currentTab='group', selectedPrivatePeer=null;
+let messages={group:[], private:{}}; // private: peerId -> []
+let connections={}; // peerId -> conn
+let peersInfo={}; // peerId -> {name}
+let isHost=false, roomHostId='', localStream=null, currentCall=null, incomingCall=null, callTimerInt=null, isMuted=false, isVideoOff=false;
+
+function log(t){ const d=document.getElementById('debug'); d.textContent=(new Date().toLocaleTimeString())+' - '+t; console.log(t); }
+function updateStatus(text,color){ const s=document.getElementById('status'); s.textContent=text; s.style.background=color; }
+function updateNetType(){
+  let type='🌐 بنت';
+  if(!navigator.onLine) type='📶 بدون نت نفس الشبكة';
+  else if(navigator.connection && navigator.connection.type==='cellular') type='📱 داتا';
+  else type='📶 واي فاي بنت';
+  document.getElementById('netType').textContent=type;
+  return type;
+}
+
+function genId(){ return 'sherif-'+Math.random().toString(36).slice(2,7)+'-'+Date.now().toString().slice(-4); }
+
+function initPeer(){
+  myId=genId();
+  document.getElementById('myIdShow').textContent='ID: '+myId.slice(0,14);
+  peer=new Peer(myId);
+  peer.on('open', ()=>{ updateStatus('● جاهز - بنت ✅','#16a34a'); log('Peer جاهز: '+myId); updateNetType(); });
+  peer.on('connection', conn=>{
+    log('اتصال جديد من '+conn.peer);
+    setupConnection(conn);
+  });
+  peer.on('call', async call=>{
+    log('مكالمة واردة من '+call.peer+' فيديو:'+call.metadata?.video);
+    incomingCall=call;
+    document.getElementById('callerName').textContent='📞 '+(peersInfo[call.peer]?.name||call.peer.slice(0,10))+' بيتصل';
+    document.getElementById('callerType').textContent=call.metadata?.video?'مكالمة فيديو 🎥':'مكالمة صوت 📞';
+    document.getElementById('incomingCall').classList.add('show');
+    try{ const a=new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg'); a.loop=true; a.play(); window.ring=a; setTimeout(()=>{try{a.pause()}catch{}},20000);}catch{}
+  });
+  peer.on('error', err=>{ log('Peer error: '+err.type); if(err.type==='peer-unavailable') log('الغرفة مش موجودة، هتبقى Host'); });
+}
+
+function setupConnection(conn){
+  const pid=conn.peer;
+  conn.on('open', ()=>{
+    connections[pid]=conn;
+    peersInfo[pid]=peersInfo[pid]||{name:pid.slice(0,8)};
+    log('متصل بـ '+pid);
+    updatePeers();
+    if(isHost){
+      // ابعت لكل الباقي ان فيه حد جديد
+      broadcastToAll({type:'peer-joined', peer:pid, name:peersInfo[pid].name}, pid);
+      // ابعت للي داخل ليستة كل المتصلين
+      conn.send({type:'peers-list', peers:peersInfo});
+    }
+  });
+  conn.on('data', data=>{
+    handleData(data, pid);
+  });
+  conn.on('close', ()=>{
+    log('انقطع '+pid);
+    delete connections[pid];
+    delete peersInfo[pid];
+    updatePeers();
+    if(isHost) broadcastToAll({type:'peer-left', peer:pid});
+  });
+}
+
+function handleData(data, fromPeer){
+  if(!data) return;
+  if(data.type==='chat'){
+    const tab = data.isPrivate ? 'private' : 'group';
+    if(tab==='group'){
+      messages.group.push(data);
+    } else {
+      const key = data.from===myId ? data.to : data.from;
+      if(!messages.private[key]) messages.private[key]=[];
+      messages.private[key].push(data);
+    }
+    render();
+    if(isHost && data.room===currentRoom){
+      // Host يوزع الرسالة لكل الناس
+      broadcastToAll(data, fromPeer);
+    }
+  } else if(data.type==='peers-list'){
+    peersInfo=data.peers||{};
+    peersInfo[myId]={name:myName};
+    updatePeers();
+  } else if(data.type==='peer-joined'){
+    peersInfo[data.peer]={name:data.name||data.peer.slice(0,8)};
+    updatePeers();
+    messages.group.push({type:'chat', text:`✅ ${data.name||data.peer.slice(0,8)} دخل`, time:nowTime(), from:'system'});
+    render();
+  } else if(data.type==='peer-left'){
+    delete peersInfo[data.peer];
+    updatePeers();
+  } else if(data.type==='image'){
+    // صورة
+    messages.group.push(data);
+    render();
+    if(isHost) broadcastToAll(data, fromPeer);
+  }
+}
+
+function broadcastToAll(data, excludePeer=null){
+  Object.values(connections).forEach(c=>{
+    if(c.peer!==excludePeer && c.open){
+      try{ c.send(data); }catch(e){ log('فشل ارسال لـ '+c.peer); }
+    }
+  });
+}
+
+function updatePeers(){
+  const count=Object.keys(connections).length+1;
+  document.getElementById('peersText').textContent=`👥 ${count} متصل - ${isHost?'Host (انت)':'Client'} - غرفة: ${currentRoom}`;
+  // private list
+  const list=document.getElementById('privateList');
+  list.innerHTML='';
+  Object.keys(peersInfo).forEach(pid=>{
+    if(pid===myId) return;
+    const chip=document.createElement('div');
+    chip.className='peerChip '+(selectedPrivatePeer===pid?'active':'');
+    chip.textContent=peersInfo[pid].name||pid.slice(0,8);
+    chip.onclick=()=>{
+      selectedPrivatePeer=pid;
+      switchTab('private');
+      document.querySelectorAll('.peerChip').forEach(x=>x.classList.remove('active'));
+      chip.classList.add('active');
+      render();
+    };
+    list.appendChild(chip);
+  });
+}
+
+function nowTime(){ return new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}); }
+
+window.setMode=m=>{
+  currentMode=m;
+  document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('active', x.dataset.mode===m));
+  log('وضع: '+m);
+  updateNetType();
+};
+
+window.switchTab=t=>{
+  currentTab=t;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('active', x.dataset.tab===t));
+  const plist=document.getElementById('privateList');
+  if(t==='private') plist.classList.add('show'); else plist.classList.remove('show');
+  render();
+};
+
+function render(){
+  const box=document.getElementById('messages');
+  box.innerHTML='';
+  let list=[];
+  if(currentTab==='group') list=messages.group;
+  else {
+    if(!selectedPrivatePeer){ box.innerHTML='<div style="text-align:center;color:#94a3b8;padding:20px;font-size:12px">اختار شخص من فوق للمحادثة الفردية<br>👆</div>'; return; }
+    list=messages.private[selectedPrivatePeer]||[];
+  }
+  list.forEach(m=>{
+    if(m.from==='system'){ const d=document.createElement('div'); d.style.cssText='text-align:center;font-size:11px;color:#94a3b8;padding:4px'; d.textContent=m.text; box.appendChild(d); return; }
+    const isMe=m.from===myId;
+    const d=document.createElement('div');
+    d.className='msg '+(isMe?'me':'other');
+    let content='';
+    if(!isMe) content+=`<div style="font-size:10px;color:#0ea5e9;font-weight:bold">${m.fromName||m.from.slice(0,8)}</div>`;
+    content+=m.text||'';
+    if(m.image) content+=`<img src="${m.image}" onclick="window.open(this.src)">`;
+    d.innerHTML=`${content}<small>${m.time} ${isMe?'✓✓':''}</small>`;
+    box.appendChild(d);
+  });
+  box.scrollTop=box.scrollHeight;
+}
+
+window.joinRoom=()=>{
+  const room=document.getElementById('roomInput').value.trim()||'sherif-home';
+  currentRoom=room;
+  roomHostId='sherif-room-'+room.replace(/[^a-z0-9]/gi,'').toLowerCase();
+  log('بحاول ادخل غرفة: '+room+' hostId: '+roomHostId);
+  // حاول تتصل بالـ host
+  const conn=peer.connect(roomHostId);
+  let connected=false;
+  conn.on('open', ()=>{
+    connected=true;
+    isHost=false;
+    log('اتصلت بالـ Host: '+roomHostId);
+    setupConnection(conn);
+    updateStatus('● متصل - بنت ✅','#16a34a');
+    // ابعت اسمك
+    conn.send({type:'peer-joined', peer:myId, name:myName});
+  });
+  conn.on('error', ()=>{
+    if(!connected){
+      // مفيش host، انت هتبقى host
+      log('مفيش Host، هتبقى Host انت');
+      becomeHost(roomHostId);
+    }
+  });
+  setTimeout(()=>{
+    if(!connected && !isHost){
+      log('مهلة الاتصال انتهت، هتبقى Host');
+      becomeHost(roomHostId);
+    }
+  },2500);
+};
+
+function becomeHost(hostId){
+  if(roomHostPeer) try{roomHostPeer.destroy();}catch{}
+  roomHostPeer=new Peer(hostId);
+  roomHostPeer.on('open', ()=>{
+    isHost=true;
+    peersInfo[myId]={name:myName};
+    updatePeers();
+    updateStatus('● Host - بنت ✅','#0ea5e9');
+    log('بقيت Host للغرفة: '+hostId+' - مستني حد يدخل');
+    messages.group.push({type:'chat', text:`✅ انت Host لغرفة ${currentRoom} - ابعت اسم الغرفة لصحابك: ${currentRoom}`, time:nowTime(), from:'system'});
+    render();
+  });
+  roomHostPeer.on('connection', conn=>{
+    log('حد بيتصل بالـ Host: '+conn.peer);
+    setupConnection(conn);
+  });
+  roomHostPeer.on('error', err=>{
+    if(err.type==='unavailable-id'){
+      log('الـ Host ID محجوز، بتحاول تتصل تاني');
+      isHost=false;
+      // حاول تتصل تاني كـ client
+      setTimeout(()=>joinRoom(),1000);
+    }
+  });
+}
+
+window.sendMsg=()=>{
+  const input=document.getElementById('txt');
+  const text=input.value.trim();
+  if(!text) return;
+  const data={type:'chat', text, time:nowTime(), from:myId, fromName:myName, room:currentRoom, isPrivate:currentTab==='private', to:selectedPrivatePeer||null};
+  if(currentTab==='group'){
+    messages.group.push(data);
+  } else {
+    if(!selectedPrivatePeer){ alert('اختار شخص من فوق'); return; }
+    if(!messages.private[selectedPrivatePeer]) messages.private[selectedPrivatePeer]=[];
+    messages.private[selectedPrivatePeer].push(data);
+  }
+  input.value=''; render();
+  if(isHost){
+    broadcastToAll(data);
+  } else {
+    // ابعت للـ host وهو يوزع
+    Object.values(connections).forEach(c=>{ if(c.open) try{c.send(data)}catch{} });
+  }
+};
+
+function compressImage(file, cb){
+  const r=new FileReader();
+  r.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      const c=document.createElement('canvas');
+      const max=700;
+      let w=img.width, h=img.height;
+      if(w>h){ if(w>max){ h*=max/w; w=max; } } else { if(h>max){ w*=max/h; h=max; } }
+      c.width=w; c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      cb(c.toDataURL('image/jpeg',0.6));
+    };
+    img.onerror=()=>cb(null);
+    img.src=e.target.result;
+  };
+  r.readAsDataURL(file);
+}
+
+document.getElementById('imgInput').addEventListener('change', function(){
+  const f=this.files[0];
+  if(!f){ log('مفيش صورة'); return; }
+  log('بتضغط الصورة... '+f.name+' '+(f.size/1024).toFixed(0)+'KB');
+  compressImage(f, dataUrl=>{
+    if(!dataUrl){ alert('فشل ضغط الصورة'); return; }
+    log('الصورة اتضغطت، بتتبعت... '+(dataUrl.length/1024).toFixed(0)+'KB');
+    const data={type:'image', text:'📸 صورة', image:dataUrl, time:nowTime(), from:myId, fromName:myName, room:currentRoom};
+    messages.group.push(data);
+    render();
+    if(isHost) broadcastToAll(data);
+    else Object.values(connections).forEach(c=>{ if(c.open) try{c.send(data)}catch{} });
+  });
+  this.value='';
+});
+
+window.toggleEmoji=()=>document.getElementById('emojiPanel').classList.toggle('show');
+window.addEmoji=e=>{ document.getElementById('txt').value+=e; document.getElementById('emojiPanel').classList.remove('show'); document.getElementById('txt').focus(); };
+document.getElementById('txt').addEventListener('keydown', e=>{ if(e.key==='Enter') sendMsg(); });
+
+window.startCall=async(video=false)=>{
+  if(Object.keys(connections).length===0){ alert('مفيش حد متصل - لازم حد يدخل نفس الغرفة\\nغرفة: '+currentRoom); return; }
+  const target=selectedPrivatePeer||Object.keys(connections)[0];
+  if(!target){ alert('مفيش حد'); return; }
+  try{
+    log('بتطلب مكالمة '+ (video?'فيديو':'صوت')+' مع '+target);
+    localStream=await navigator.mediaDevices.getUserMedia({video, audio:true});
+    document.getElementById('localVideo').srcObject=localStream;
+    document.getElementById('callUI').classList.add('show');
+    document.getElementById('callWith').textContent=(video?'🎥 ':'📞 ')+(peersInfo[target]?.name||target.slice(0,8));
+    const call=peer.call(target, localStream, {metadata:{video, fromName:myName}});
+    handleCall(call);
+    startTimer();
+  }catch(e){ alert('محتاج إذن كاميرا/ميك: '+e.message); log('فشل المكالمة: '+e.message); }
+};
+
+function handleCall(call){
+  currentCall=call;
+  call.on('stream', s=>{
+    log('استقبلت stream');
+    document.getElementById('remoteVideo').srcObject=s;
+  });
+  call.on('close', ()=>{ log('المكالمة انتهت'); endCall(); });
+  call.on('error', e=>{ log('خطأ مكالمة: '+e); endCall(); });
+}
+
+window.acceptCall=async()=>{
+  document.getElementById('incomingCall').classList.remove('show');
+  if(window.ring) try{window.ring.pause()}catch{}
+  if(!incomingCall) return;
+  const video=incomingCall.metadata?.video||false;
+  try{
+    localStream=await navigator.mediaDevices.getUserMedia({video, audio:true});
+    document.getElementById('localVideo').srcObject=localStream;
+    document.getElementById('callUI').classList.add('show');
+    document.getElementById('callWith').textContent=(video?'🎥 ':'📞 ')+(peersInfo[incomingCall.peer]?.name||incomingCall.peer.slice(0,8));
+    incomingCall.answer(localStream);
+    handleCall(incomingCall);
+    startTimer();
+  }catch(e){ alert('محتاج إذن: '+e.message); }
+};
+
+window.rejectCall=()=>{
+  document.getElementById('incomingCall').classList.remove('show');
+  if(window.ring) try{window.ring.pause()}catch{}
+  if(incomingCall) try{incomingCall.close()}catch{}
+  incomingCall=null;
+};
+
+function startTimer(){
+  let sec=0;
+  if(callTimerInt) clearInterval(callTimerInt);
+  callTimerInt=setInterval(()=>{ sec++; const m=String(Math.floor(sec/60)).padStart(2,'0'); const s=String(sec%60).padStart(2,'0'); document.getElementById('callTimer').textContent=m+':'+s; },1000);
+}
+
+window.endCall=()=>{
+  if(callTimerInt) clearInterval(callTimerInt);
+  document.getElementById('callUI').classList.remove('show');
+  document.getElementById('incomingCall').classList.remove('show');
+  if(window.ring) try{window.ring.pause()}catch{}
+  if(currentCall) try{currentCall.close()}catch{}
+  if(localStream) localStream.getTracks().forEach(t=>t.stop());
+  currentCall=null; localStream=null;
+  document.getElementById('localVideo').srcObject=null;
+  document.getElementById('remoteVideo').srcObject=null;
+};
+
+window.toggleMute=()=>{
+  if(!localStream) return;
+  isMuted=!isMuted;
+  localStream.getAudioTracks().forEach(t=>t.enabled=!isMuted);
+  document.getElementById('muteBtn').textContent=isMuted?'🔇':'🎤';
+  document.getElementById('muteBtn').style.background=isMuted?'#ef4444':'#334155';
+};
+
+window.toggleVideo=()=>{
+  if(!localStream) return;
+  const vt=localStream.getVideoTracks()[0];
+  if(!vt) return;
+  isVideoOff=!isVideoOff;
+  vt.enabled=!isVideoOff;
+  document.getElementById('videoBtn').textContent=isVideoOff?'📷':'🎥';
+};
+
+setInterval(()=>updateNetType(),3000);
+initPeer();
+setTimeout(()=>{ document.getElementById('roomInput').value='sherif-home'; },200);
+
+</script>
+</body>
+</html>
